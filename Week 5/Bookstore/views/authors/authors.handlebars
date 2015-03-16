@@ -1,0 +1,23 @@
+<div class="col-sm-6 col-sm-offset-3">
+
+    <h1><span class="fa"></span> Authors</h1>
+
+    <!-- show any messages that come back with authentication -->
+    {{#if message }}
+        <div class="alert alert-danger">{{message}}</div>
+    {{/if}}
+
+    <h1>Aantal: {{authors.length}}</h1>
+    <ul>
+        {{#each authors}}
+        <li>
+            <div>
+                <strong>Name: </strong><span>{{fullName}}</span><br />
+                <strong>Birthdate: </strong><span>{{birthDate}}</span><br />
+                <strong>Age: </strong><span>{{age}}</span><br />
+                <strong>Country: </strong><span>{{country}}</span>
+            </div>
+        </li>
+        {{/each}}
+    </ul>
+</div>

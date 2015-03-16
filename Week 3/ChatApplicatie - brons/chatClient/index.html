@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<title>ChatClient</title>
+	</head>
+	<body>
+		<table>
+			<tr>
+				<td>
+					<table>
+						<tr>
+							<td><span>Gebruikersnaam:</span></td>
+							<td colspan="2"><input type="text" id="username" name="username"></td>
+						</tr>
+						<tr>
+							<td colspan="3"><span>Kamers:</span></td>
+						</tr>
+						<tr>
+							<td colspan="3">
+								<select id="chatrooms" name="chatrooms" size="4" style="width: 100%;"></select>
+							</td>
+						</tr>
+						<tr>
+							<td><span>Kamer toevoegen:</span></td>
+							<td><input type="text" id="roomName" name="roomName"></td>
+							<td><input type="button" id="addRoom" value="toevoegen"></td>
+						</tr>
+					</table>
+				</td>
+				<td>
+					<table>
+						<tr>
+							<td><span>Mensen in deze kamer:</span></td>
+						</tr>
+						<tr>
+							<td>
+								<select id="users" name="users" size="7" style="width: 100%;"></select>
+							</td>
+						</tr>
+					</table>
+				</td>
+				<td>
+					<table>
+						<tr>
+							<td colspan="2"><span>Chatberichten:</span></td>
+						</tr>
+						<tr>
+							<td colspan="2">
+								<textarea id="lines" name="lines" rows="6" cols="50"></textarea>
+							</td>
+						</tr>
+						<tr>
+							<td><textarea id="chatMessage" rows="2" cols="50"></textarea></td>
+							<td><input id="sendBtn" type="button" value="Verzenden"></td>
+						</tr>
+					</table>
+				</td>
+			</tr>
+		</table>
+		<script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.2/jquery.min.js"></script>
+		<script>
+
+		var roomId,
+			userName,
+			userId,
+			messages,
+			messageRefreshInterval = 1000;
+
+		$(document).ready(function ()
+		{
+			var doneFunction 									= function(data) { setInterval(function(){ if(roomId) { getNewMessages(); } }, messageRefreshInterval); };
+
+			getRooms(doneFunction);
+		});
+
+
+		var getNewMessages 										= function()
+		{
+			var doneFunctionMessages 							= function(data)
+			{
+				var lines 										= data.lines;
+				var currentLine,
+					currentMessage,
+					lineAdded;
+
+				for (var lineIndex = 0; lineIndex < lines.length; lineIndex++)
+				{
+					currentLine 								= lines[lineIndex];
+					lineAdded 									= false;
+
+					for (var messageIndex = 0; messageIndex < messages.length; messageIndex++)
+					{
+						if (currentLine.userId == messages[messageIndex].userId && currentLine.time == messages[messageIndex].time && currentLine.text == messages[messageIndex].text) { lineAdded = true; break;}
+					}
+
+					if (!lineAdded)
+					{
+						messages.push({ userId : currentLine.userId, userName : currentLine.userName, time : currentLine.time, text : currentLine.text });
+						if (messages.length > 1) { $("#lines").append('\n'); }
+						$("#lines").append(currentLine.time + ' ' + currentLine.userName + ' : ' + currentLine.text);
+					}
+				}
+
+				$("#lines").scrollTop($("#lines")[0].scrollHeight);
+			};
+
+			ajaxCall("/Rooms/" + roomId + "/Lines", "GET", "JSON", null, doneFunctionMessages);
+		};
+
+		var getRooms 											= function (finalDoneFunction)
+		{
+			var doneFunction 									= function(data)
+			{
+				$("#chatrooms").html("");
+				var rooms 										= data.rooms;
+				for (var i = 0; i < rooms.length; i++)			{ $("#chatrooms").append('<option value="' + rooms[i]._id + '">' + rooms[i].name + '</option>'); }
+				
+				if (finalDoneFunction)							{ finalDoneFunction(); }
+			};
+
+			ajaxCall("/rooms", "GET", "JSON", null, doneFunction);
+		};
+
+		$("#chatrooms").change(function ()
+		{
+			var tempRoomId 										= $("#chatrooms option:selected").val();
+			
+			if (roomId && roomId === tempRoomId) 				{ return; }
+
+			roomId 												= tempRoomId;
+
+			var doneFunctionUsers 									= function(data)
+			{
+				$("#users").html("");
+				var users 										= data.users;
+				for (var i = 0; i < users.length; i++) 			{ $("#users").append('<option value="' + users[i].id + '">' + users[i].name + '</option>'); }
+			};
+
+			ajaxCall("/Rooms/" + roomId + "/Users", "GET", "JSON", null, doneFunctionUsers);
+
+			$("#lines").html("");
+			messages = [];
+			getNewMessages();
+  		});
+
+  		$("#sendBtn").on("click", function ()
+  		{
+  			var tempUserName 									= $("#username").val();
+  			var message 										= $("#chatMessage").val();
+  			
+  			if (!roomId) 										{ alert("You need to be in a room!"); return; }
+  			else if (tempUserName.length <= 0) 					{ alert("You need to input a username!"); return; }
+  			else if (message.length <= 0) 						{ alert("You need to input a message!"); return; }
+
+  			var sendMessageFunction 							= function()
+  			{
+  				var alwaysFunction 								= function ()
+  				{
+  					socket.emit('message', message);
+  					console.log("send socket msg");
+
+  					$("#chatMessage").val("");
+  					getNewMessages();
+  				};
+
+  				var failFunction 								= function () { 							};
+  				var now											= new Date();
+
+  				now 											= now.getHours() + ":" + now.getMinutes() + ":" + now.getSeconds() + " " + now.getDate() + "-" + (now.getMonth() + 1) + "-" + now.getFullYear();
+
+  				var dataObject 									= { userId : userId, time : now, text : message};
+
+  				ajaxCall("/Rooms/" + roomId + "/Lines", "POST", "JSON", dataObject, null, failFunction, alwaysFunction);
+  			};
+
+  			getUserId(tempUserName, userId, sendMessageFunction);
+
+  		});
+
+  		var getUserId 											= function (tempUserName, oldUserId, doneFunction, endOfRecursive)
+  		{
+  			if (userId && tempUserName == userName) 			{ doneFunction(); return; }
+
+  			userName 											= tempUserName;
+
+	  		var doneFunctionGetUserId 							= function (data)
+	  		{
+	  			var users 										= data.users;
+
+		  		for (var i = 0; i < users.length; i++)
+		  		{
+		  			if (users[i].name == userName)
+		  			{
+		  				userId 									= users[i]._id;
+		  				doneFunction();
+		  				return;
+		  			}
+		  		}
+
+				//update the username
+		  		if (oldUserId)
+		  		{
+					var alwaysFunctionUpdateUser 				= function (data) { doneFunction(); };
+					var failFunction 							= function() {};
+		  			var dataObject 								= { id : userId, name : userName };
+
+		  			ajaxCall("/Users", "PUT", "JSON", dataObject, null, failFunction, alwaysFunctionUpdateUser);
+		  		}
+		  		//else add a new user, and retrieve the userId
+		  		else
+		  		{
+		  			var alwaysFunctionAddUser 					= function (data) { getUserId(userName, oldUserId, doneFunction); };
+		  			var failFunction 							= function() {};
+			  		var dataObject 								= { name : userName };
+
+			  		ajaxCall("/Users", "POST", "JSON", dataObject, null, failFunction, alwaysFunctionAddUser);
+		  		}
+	  		};
+
+	  		ajaxCall("/Users", "GET", "JSON", null, doneFunctionGetUserId);
+	  	};
+
+  		var ajaxCall = function(url, type, dataType, data, doneFunction, failFunction, alwaysFunction)
+  		{
+  			data 												= data 				|| {};
+  			doneFunction										= doneFunction 		|| function(){};
+  			failFunction										= failFunction 		|| function(jqXHR, textStatus){ console.log(jqXHR); alert( "Request failed: " + textStatus ); };
+  			alwaysFunction										= alwaysFunction 	|| function(){};
+  			
+  			$.ajax(
+  			{
+			  url 		: 	url,
+			  type 		: 	type,
+			  dataType 	: 	dataType,
+			  data 		: 	data, 
+			}
+			).done( 	function (data) 						{ doneFunction(data); 				}
+			).fail( 	function (jqXHR, textStatus) 			{ failFunction(jqXHR, textStatus); 	}
+			).always( 	function () 							{ alwaysFunction(); 				}
+			);
+  		};
+
+  		$("#addRoom").on("click", function ()
+  		{
+  			var roomName 										= $("#roomName").val()
+
+  			if (roomName.length <= 0) 							{ alert("You need to fill in a roomname!"); return; }
+
+  			var getRoomNamesDoneFunction 						= function (data)
+  			{
+  				var rooms 										= data.rooms;
+
+  				for (var index = 0; index < rooms.length; index++)
+  				{
+  					if (rooms[index].name == roomName)
+  					{
+  						alert("There already is a room with that name!");
+  						$("#roomName").val("");
+  						return;
+  					}
+  				}
+
+  				var alwaysFunction 		 							= function (data)
+	  			{
+	  				var doneFunction 								= function ()
+	  				{
+						$("#roomName").val("");
+	  					$("#chatrooms").scrollTop($("#chatrooms")[0].scrollHeight);
+	  				};
+
+	  				getRooms(doneFunction);
+	  			};
+
+			  	var failFunction 									= function() {};
+			  	var dataObject 										= { name : roomName };
+
+		  		ajaxCall("/Rooms", "POST", "JSON", dataObject,  null, failFunction, alwaysFunction);
+  			};
+	
+			ajaxCall("/Rooms", "GET", "JSON",  null, getRoomNamesDoneFunction);
+  		});
+		</script>
+		<script src="https://cdn.socket.io/socket.io-1.2.0.js"></script>
+		<script>
+      var socket = io.connect("http://localhost:3001");
+
+      socket.on('message', function(msg){
+        //$('#messages').append($('<li>').text(msg));
+        console.log("GOT msg");
+        console.log(msg);
+      });
+
+    </script>
+	</body>
+</html>

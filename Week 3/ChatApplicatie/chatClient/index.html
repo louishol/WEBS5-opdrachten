@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<title>ChatClient</title>
+	</head>
+	<body>
+		<table>
+			<tr>
+				<td>
+					<table>
+						<tr>
+							<td><span>Gebruikersnaam:</span></td>
+							<td colspan="2"><input type="text" id="username" name="username"></td>
+						</tr>
+						<tr>
+							<td colspan="3"><span>Kamers:</span></td>
+						</tr>
+						<tr>
+							<td colspan="3">
+								<select id="chatrooms" name="chatrooms" size="4" style="width: 100%;"></select>
+							</td>
+						</tr>
+						<tr>
+							<td><span>Kamer toevoegen:</span></td>
+							<td><input type="text" id="roomName" name="roomName"></td>
+							<td><input type="button" id="addRoom" value="toevoegen"></td>
+						</tr>
+					</table>
+				</td>
+				<td>
+					<table>
+						<tr>
+							<td><span>Mensen in deze kamer:</span></td>
+						</tr>
+						<tr>
+							<td>
+								<select id="users" name="users" size="7" style="width: 100%;"></select>
+							</td>
+						</tr>
+					</table>
+				</td>
+				<td>
+					<table>
+						<tr>
+							<td colspan="2"><span>Chatberichten:</span></td>
+						</tr>
+						<tr>
+							<td colspan="2">
+								<textarea id="lines" name="lines" rows="6" cols="50"></textarea>
+							</td>
+						</tr>
+						<tr>
+							<td><textarea id="chatMessage" rows="2" cols="50"></textarea></td>
+							<td><input id="sendBtn" type="button" value="Verzenden"></td>
+						</tr>
+					</table>
+				</td>
+			</tr>
+		</table>
+		<script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.2/jquery.min.js"></script>
+		<script src="https://cdn.socket.io/socket.io-1.2.0.js"></script>
+		<script>
+
+		var roomId;
+
+		var addLine 											= function (lineObject)
+		{
+			if ($("#lines").html().length > 0) { $("#lines").append('\n'); }
+
+				$("#lines").append(lineObject.time + ' ' + lineObject.userName + ' : ' + lineObject.text);
+
+			$("#lines").scrollTop($("#lines")[0].scrollHeight);
+		};
+
+		$("#chatrooms").change(function ()
+		{
+			var tempRoomId 										= $("#chatrooms option:selected").val();
+			var userName 										= $("#username").val();
+		
+			if (roomId && roomId === tempRoomId) 				{ return; }
+
+			if (!userName || userName.length <= 0)				{  $("#chatrooms option:selected").prop("selected", false); alert("You need to fill in a username to enter a room!"); return; }
+
+			roomId 												= tempRoomId;
+
+			socket.emit("enter room", JSON.stringify({ userName : userName, roomId : roomId }));
+  		});
+
+  		$("#sendBtn").on("click", function ()
+  		{
+  			var tempUserName 									= $("#username").val();
+  			var message 										= $("#chatMessage").val();
+  			
+  			if (!roomId) 										{ alert("You need to be in a room!"); return; }
+  			else if (tempUserName.length <= 0) 					{ alert("You need to input a username!"); return; }
+  			else if (message.length <= 0) 						{ alert("You need to input a message!"); return; }
+
+  			var now												= new Date();
+
+  			now 												= now.getHours() + ":" + now.getMinutes() + ":" + now.getSeconds() + " " + now.getDate() + "-" + (now.getMonth() + 1) + "-" + now.getFullYear();
+
+  			socket.emit('message', JSON.stringify({ time : now, text : message, userName : tempUserName }));
+
+  			$("#chatMessage").val("");
+  		});
+
+  		$("#addRoom").on("click", function ()
+  		{
+  			var roomName 										= $("#roomName").val();
+
+  			if (roomName.length <= 0) 							{ alert("You need to fill in a roomname!"); return; }
+
+  			socket.emit('add room', roomName);
+  			$("#roomName").val("");
+  		});
+
+      	var socket 												= io();
+
+ 		socket.on('rooms', function (data)
+ 		{
+ 			data 												= JSON.parse(data);
+       		$("#chatrooms").html("");
+
+			var rooms 											= data.rooms;
+
+			for (var i = 0; i < rooms.length; i++)				{ $("#chatrooms").append('<option value="' + rooms[i]._id + '">' + rooms[i].name + '</option>'); }
+      	
+			$("#chatrooms").scrollTop($("#chatrooms")[0].scrollHeight);
+      	});
+
+      	socket.on('users', function (users)
+      	{
+      		$("#users").html("");
+      		console.log(users);
+
+			for (var i = 0; i < users.length; i++) 				{ $("#users").append('<option>' + users[i] + '</option>'); }
+      	});
+
+      	socket.on('messages', function (messages)
+      	{
+      		$("#lines").html("");
+      		var lines 											= JSON.parse(messages).lines;
+
+			for (var lineIndex = 0; lineIndex < lines.length; lineIndex++) { addLine(lines[lineIndex]); }
+      	});
+
+	    socket.on('message', function(msg) 						{ addLine(JSON.parse(msg)); });
+	    </script>
+	</body>
+</html>
